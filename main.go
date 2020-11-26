@@ -5,32 +5,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/hb9fxq/flexlib-go/obj"
 	"github.com/hb9fxq/flexlib-go/sdrobjects"
 	"github.com/hb9fxq/flexlib-go/vita"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
 var rc *obj.RadioContext
 
-
 var addr, radioIp, pcapInterface string
 
-var pcapChan = make(chan []byte)
-
+var pcapChanUdp = make(chan []byte)
+var pcapChanTcp = make(chan string)
 var hub *Hub
 
 var (
-	MSG_PAN = []byte{'P', ' '}
+	MSG_PAN   = []byte{'P', ' '}
 	MSG_SLICE = []byte{'S', ' '}
-	MSG_FFT = []byte{'F', ' '}
+	MSG_FFT   = []byte{'F', ' '}
+	MSG_OPUS  = []byte{'O', ' '}
 )
 
-
-func main(){
+func main() {
 
 	radioIp = "192.168.92.8"
 	addr = "0.0.0.0:8283"
@@ -51,13 +52,14 @@ func main(){
 	}(rc)
 
 	go pushRadioStates()
+	go dispatchUdpPackets()
+	go dispatchTcpPackets()
 	go pullPcap()
-	go dispatchPackages()
 
 	hub = newHub()
 	go hub.run()
 
-	http.HandleFunc("/", serveHome)
+	serveHome()
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})
@@ -68,9 +70,22 @@ func main(){
 
 }
 
-func dispatchPackages() {
-	for{
-		message := <-pcapChan
+func dispatchTcpPackets() {
+	for {
+		message := <-pcapChanTcp
+		message = strings.Trim(message, "\n")
+		fmt.Println("PCAPTCPMESSAGE>>>>>>" + message)
+
+		// need to parse, because response does not contain dimensions
+		if strings.Contains(message, "display pan set ") && strings.Contains(message, "ixel") {
+			obj.ParseResponseLine(rc, message)
+		}
+	}
+}
+
+func dispatchUdpPackets() {
+	for {
+		message := <-pcapChanUdp
 
 		// parse preamble
 		err, preamble, payload := vita.ParseVitaPreamble(message)
@@ -90,9 +105,10 @@ func dispatchPackages() {
 				handleFFTPackage(preamble, pkg)
 				break
 			case vita.SL_VITA_OPUS_CLASS:
+				pkg := vita.ParseVitaOpus(payload, preamble)
+				handleOpusPackage(preamble, pkg)
 				break
 			case vita.SL_VITA_IF_NARROW_CLASS:
-				_ = vita.ParseFData(payload, preamble)
 				fmt.Println("SL_VITA_IF_NARROW_CLASS")
 				break
 			case vita.SL_VITA_METER_CLASS:
@@ -121,10 +137,15 @@ func dispatchPackages() {
 	}
 }
 
+func handleOpusPackage(preamble *vita.VitaPacketPreamble, pkg []byte) {
+	res := append(MSG_OPUS, pkg...)
+	hub.broadcast <- res
+}
+
 type FftHandle struct {
-	Missing uint16
+	Missing    uint16
 	FrameIndex uint32
-	Buffer []byte
+	Buffer     []byte
 }
 
 var fftHandles = make(map[string]*FftHandle)
@@ -148,7 +169,7 @@ func handleFFTPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrFFTP
 	b := make([]byte, 2)
 
 	// todo: find smarter way
-	for _, val := range pkg.Payload{
+	for _, val := range pkg.Payload {
 
 		binary.LittleEndian.PutUint16(b, val)
 		handle.Buffer = append(handle.Buffer, b...)
@@ -164,35 +185,39 @@ func handleFFTPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrFFTP
 	}
 }
 
-
 func pullPcap() {
 	if handle, err := pcap.OpenLive(pcapInterface, 1600, true, pcap.BlockForever); err != nil {
 		panic(err)
-	} else if err := handle.SetBPFFilter("udp and port 4993"); err != nil {
+	} else if err := handle.SetBPFFilter("port 4993 or port 4992"); err != nil {
 		panic(err)
 	} else {
+
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
 		for packet := range packetSource.Packets() {
-			pcapChan <- packet.ApplicationLayer().Payload()
+
+			tcpLayer := packet.Layer(layers.LayerTypeTCP)
+			applicationLayer := packet.ApplicationLayer()
+			if tcpLayer != nil && applicationLayer != nil {
+				pcapChanTcp <- fmt.Sprintf("%s", applicationLayer.Payload())
+			}
+
+			udpLayer := packet.Layer(layers.LayerTypeUDP)
+			if udpLayer != nil {
+				pcapChanUdp <- packet.ApplicationLayer().Payload()
+			}
+
 		}
 	}
 }
 
-func serveHome(w http.ResponseWriter, r *http.Request) {
-	log.Println(r.URL)
-	if r.URL.Path != "/" {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-	if r.Method != "GET" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	http.ServeFile(w, r, "smartsdr-websocket-mirror.html")
+func serveHome() {
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/", fs)
+
 }
 
-func pushRadioStates()  {
+func pushRadioStates() {
 	for {
 		jsonPanadapters := make(map[string]interface{})
 		rc.Panadapters.Range(func(k interface{}, value interface{}) bool {
@@ -207,17 +232,16 @@ func pushRadioStates()  {
 			continue
 		}
 
-		hub.broadcast<-append(MSG_PAN, j...)
+		hub.broadcast <- append(MSG_PAN, j...)
 		fmt.Println("Broadcast " + string(j))
-		time.Sleep(1*time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 
-
 type Hub struct {
-	clients map[*Client]bool
-	broadcast chan []byte
-	register chan *Client
+	clients    map[*Client]bool
+	broadcast  chan []byte
+	register   chan *Client
 	unregister chan *Client
 }
 

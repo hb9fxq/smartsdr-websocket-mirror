@@ -5,8 +5,6 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -70,8 +68,7 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		fmt.Println("client message.... ignore for now ")
-		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
+
 		c.hub.broadcast <- message
 	}
 }
@@ -92,7 +89,6 @@ func (c *Client) writePump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// The hub closed the channel.
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -103,7 +99,6 @@ func (c *Client) writePump() {
 			}
 			w.Write(message)
 
-			// Add queued chat messages to the current websocket message.
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				w.Write(newline)
