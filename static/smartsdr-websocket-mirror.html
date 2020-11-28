@@ -5,201 +5,224 @@
 </head>
 <body>
 
-        Panadapter 0x40000000
 
-        <div style="position: relative;">
-            <canvas id="canvas0x40000000Back" width="100" height="100"
-                    style="position: absolute; left: 0; top: 0; z-index: 0;"></canvas>
-            <canvas id="canvas0x40000000" width="100" height="100"
-                    style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
-        </div>
+<input type="button" onclick="audioContext.resume()">
+Panadapter 0x40000000
+
+<div style="position: relative;">
+    <canvas id="canvas0x40000000Back" width="5000" height="500"
+            style="position: absolute; left: 0; top: 0; z-index: 0;"></canvas>
+    <canvas id="canvas0x40000000" width="5000" height="500"
+            style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
+</div>
 
 
-<script src="libopus.js"></script>
+<script type="text/javascript">
+    LIBOPUS_WASM_URL = "libopus.wasm";
+</script>
+<script type="text/javascript" src="libopus.js"></script>
+<script type="text/javascript" src="xaudio.js"></script>
+
+
 <script src="xaudio.js"></script>
-<script src="opus.js"></script>
 <script src="ws-audio-api.js"></script>
 
 <script type="application/javascript">
 
-    var player = new WSAudioAPI.Player();
-    player.start();
-    player.setVolume(0.5)
-    const reader = new FileReader();
-    const decoder = new TextDecoder();
 
-
-    var canvas = document.getElementById('canvas0x40000000');
-    var canvasb = document.getElementById('canvas0x40000000Back');
-
-    var ctx = canvas.getContext('2d');
-    var ctxb = canvasb.getContext('2d');
-
-    var jsonPanadapter = {}
-    var conn;
-
-    function frequencyAtPixel(pixel) {
-
-        var bwMhz = jsonPanadapter.Bandwidth
-        var centerMhz = jsonPanadapter.Center / 1000000
-        var widthPx = jsonPanadapter.XPixels
-        var centerPx = widthPx / 2
-        var mhzPerPx = bwMhz / widthPx
-        var offset = 0;
-
-        if (pixel > centerPx) {
-            offset = pixel - centerPx
-        } else {
-            offset = (centerPx - pixel) * -1
-        }
-
-        return centerMhz + (offset * mhzPerPx)
-
-
+    libopus.onload = function () {
+        var start = new Date().getTime();
+        console.info("loaded" + start)
     }
 
-    function handleFftPackage(buffer) {
 
-        var rawBuffer = buffer.slice(10)
-        var valBuffer = rawBuffer
-
-        if (rawBuffer.byteLength % 2 != 0) { //well.... udp....
-            valBuffer = rawBuffer.slice(0, valBuffer.byteLength - 1)
-        }
+        const reader = new FileReader();
+        const decoder = new TextDecoder();
 
 
-        var values = new Uint16Array(valBuffer)
-        var panadapterIdHexString = "0x" + decoder.decode(new Uint8Array(buffer.slice(2, 10))).trim()
+        var canvas = document.getElementById('canvas0x40000000');
+        var canvasb = document.getElementById('canvas0x40000000Back');
 
-        if (panadapterIdHexString != "0x40000000") {
-            return;
-        }
+        var ctx = canvas.getContext('2d');
+        var ctxb = canvasb.getContext('2d');
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        var jsonPanadapter = {}
+        var conn;
 
-        var y = 0;
+        function frequencyAtPixel(pixel) {
 
+            var bwMhz = jsonPanadapter.Bandwidth
+            var centerMhz = jsonPanadapter.Center / 1000000
+            var widthPx = jsonPanadapter.XPixels
+            var centerPx = widthPx / 2
+            var mhzPerPx = bwMhz / widthPx
+            var offset = 0;
 
-        //console.info(hzPerPixel)
-
-        ctx.strokeStyle = '#0800ff';
-        ctx.beginPath();
-        ctx.moveTo(0, values[0]);
-        ctx.beginPath();
-        ctx.moveTo(0, values[0]);
-        var n = 0;
-        for (n = 0; n < values.length - 1; n++) {
-            ctx.lineTo((n), values[n]);
-        }
-        ctx.moveTo(values.length, values[values.length - 2]);
-
-        ctx.stroke();
-    }
-
-    function handlePanadapterMessage(buffer) {
-
-        var jsonText = decoder.decode(new Uint8Array(buffer.slice(2))).trim()
-        jsonPanadapter = JSON.parse(jsonText)["0x40000000"]
-
-        console.info(jsonText)
-
-
-        if (parseInt(canvas.width) != parseInt(jsonPanadapter.XPixels)) {
-            canvas.width = jsonPanadapter.XPixels
-            canvasb.width = jsonPanadapter.XPixels
-            console.info("canvas resize x=" + jsonPanadapter.XPixels)
-        }
-
-        if (parseInt(canvas.height) != parseInt(jsonPanadapter.YPixels)) {
-            canvas.height = jsonPanadapter.YPixels
-            canvasb.height = jsonPanadapter.YPixels
-            console.info("canvas resize y=" + jsonPanadapter.YPixels)
-        }
-
-        ctxb.clearRect(0, 0, canvasb.width, canvasb.height);
-        ctxb.beginPath();
-        ctxb.fillStyle = "rgb(43,71,188, 0.2)";
-        ctxb.rect(0, canvas.height - 20, canvas.width, canvas.height);
-        ctxb.fill();
-
-        var strokeCount = 0;
-        for (y = 0; y < jsonPanadapter.XPixels; y += canvas.width / 20) {
-            ctxb.beginPath();
-            ctxb.strokeStyle = '#999292';
-            ctxb.moveTo(y, 0);
-            ctxb.lineTo(y, canvas.height - 20);
-            ctxb.stroke();
-            ctxb.closePath();
-
-            if (strokeCount % 2 == 0) {
-                ctxb.fillStyle = "rgb(255,0,0)";
-                ctxb.font = '14px serif';
-
-                var freq = frequencyAtPixel(y)
-                freq = freq.toFixed(4)
-
-                ctxb.fillText(freq, y, canvas.height - 10);
+            if (pixel > centerPx) {
+                offset = pixel - centerPx
+            } else {
+                offset = (centerPx - pixel) * -1
             }
 
-            strokeCount += 1;
+            return centerMhz + (offset * mhzPerPx)
+
 
         }
 
+        function handleFftPackage(buffer) {
 
-        //console.info(hzPerPixel)
-        // console.info(jsonPanadapter)
-    }
+            var rawBuffer = buffer.slice(10)
+            var valBuffer = rawBuffer
+
+            if (rawBuffer.byteLength % 2 != 0) { //well.... udp....
+                valBuffer = rawBuffer.slice(0, valBuffer.byteLength - 1)
+            }
 
 
+            var values = new Uint16Array(valBuffer)
+            var panadapterIdHexString = "0x" + decoder.decode(new Uint8Array(buffer.slice(2, 10))).trim()
 
-    function handleOpusMessage(slice) {
-        if(slice.byteLength>80){
-            return // noise
+            if (panadapterIdHexString != "0x40000000") {
+                return;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            var y = 0;
+
+
+            //console.info(hzPerPixel)
+
+            ctx.strokeStyle = '#0800ff';
+            ctx.beginPath();
+            ctx.moveTo(0, values[0]);
+            ctx.beginPath();
+            ctx.moveTo(0, values[0]);
+            var n = 0;
+            for (n = 0; n < values.length - 1; n++) {
+                ctx.lineTo((n), values[n]);
+            }
+            ctx.moveTo(values.length, values[values.length - 2]);
+
+            ctx.stroke();
         }
-        //console.info(slice.byteLength)
-        player.AddChunk(new Uint8Array(slice))
-    }
+
+        function handlePanadapterMessage(buffer) {
+
+            var jsonText = decoder.decode(new Uint8Array(buffer.slice(2))).trim()
+            jsonPanadapter = JSON.parse(jsonText)["0x40000000"]
+
+            console.info(jsonText)
 
 
-    if (window["WebSocket"]) {
-        conn = new WebSocket("ws://" + document.location.host + "/ws");
-        conn.onclose = function (evt) {
-            var item = document.createElement("div");
-            item.innerHTML = "<b>Connection closed.</b>";
-            appendLog(item);
-        };
-        conn.onmessage = function (evt) {
+            if (parseInt(canvas.width) != parseInt(jsonPanadapter.XPixels)) {
+                canvas.width = jsonPanadapter.XPixels
+                canvasb.width = jsonPanadapter.XPixels
+                console.info("canvas resize x=" + jsonPanadapter.XPixels)
+            }
 
-            if (evt.data instanceof Blob) {
-                var reader = new FileReader();
-                reader.onload = function() {
+            if (parseInt(canvas.height) != parseInt(jsonPanadapter.YPixels)) {
+                canvas.height = jsonPanadapter.YPixels
+                canvasb.height = jsonPanadapter.YPixels
+                console.info("canvas resize y=" + jsonPanadapter.YPixels)
+            }
 
-                    var i8View = new Uint8Array(reader.result)
+            ctxb.clearRect(0, 0, canvasb.width, canvasb.height);
+            ctxb.beginPath();
+            ctxb.fillStyle = "rgb(43,71,188, 0.2)";
+            ctxb.rect(0, canvas.height - 20, canvas.width, canvas.height);
+            ctxb.fill();
 
-                   // console.info(evt.data.byteLength)
-                   // console.info(i8View.byteLength)
+            var strokeCount = 0;
+            for (y = 0; y < jsonPanadapter.XPixels; y += canvas.width / 20) {
+                ctxb.beginPath();
+                ctxb.strokeStyle = '#999292';
+                ctxb.moveTo(y, 0);
+                ctxb.lineTo(y, canvas.height - 20);
+                ctxb.stroke();
+                ctxb.closePath();
 
+                if (strokeCount % 2 == 0) {
+                    ctxb.fillStyle = "rgb(255,0,0)";
+                    ctxb.font = '14px serif';
 
-                    var prefix = i8View[0]
-                    switch (prefix) {
-                        case 70:
-                            handleFftPackage(reader.result.slice())
-                            break;
-                        case 80: //P
-                            handlePanadapterMessage(reader.result.slice())
-                            break;
-                        case 79: //O
+                    var freq = frequencyAtPixel(y)
+                    freq = freq.toFixed(4)
 
-                            handleOpusMessage(reader.result.slice(2))
-                            break;
-                    }
+                    ctxb.fillText(freq, y, canvas.height - 10);
                 }
 
-                reader.readAsArrayBuffer(evt.data);
+                strokeCount += 1;
+
             }
 
+
+            //console.info(hzPerPixel)
+            // console.info(jsonPanadapter)
         }
-    } else {
+
+
+        var PlayerInitDone=false
+        var player = {};
+        function handleOpusMessage(slice) {
+
+            if(libopus.loaded == false){
+                return;
+            }
+
+            if(!PlayerInitDone) {
+                this.player = new WSAudioAPI.Player();
+                this.player.start();
+                PlayerInitDone = true
+            }
+
+
+            if(audioContext.state == "running"){
+                player.AddChunk(slice)
+            }
+        }
+
+
+        if (window["WebSocket"]) {
+            conn = new WebSocket("ws://" + document.location.host + "/ws");
+            conn.onclose = function (evt) {
+                var item = document.createElement("div");
+                item.innerHTML = "<b>Connection closed.</b>";
+                //appendLog(item);
+            };
+            conn.onmessage = function (evt) {
+
+                if (evt.data instanceof Blob) {
+                    var reader = new FileReader();
+                    reader.onload = function () {
+
+                        var i8View = new Uint8Array(reader.result)
+
+                        // console.info(evt.data.byteLength)
+                        // console.info(i8View.byteLength)
+
+
+                        var prefix = i8View[0]
+                        switch (prefix) {
+                            case 70:
+                                handleFftPackage(reader.result.slice())
+                                break;
+                            case 80: //P
+                                handlePanadapterMessage(reader.result.slice())
+                                break;
+                            case 79: //O
+                                //console.info(i8View.length)
+                                handleOpusMessage(i8View.slice(2))
+                                break;
+                        }
+                    }
+
+                    reader.readAsArrayBuffer(evt.data);
+                }
+
+            }
+        } else {
+
     }
 </script>
 

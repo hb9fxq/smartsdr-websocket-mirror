@@ -35,6 +35,7 @@ func main() {
 
 	radioIp = "192.168.92.8"
 	addr = "0.0.0.0:8283"
+	//pcapInterface = "bridge1"
 	pcapInterface = "en0"
 
 	rc = new(obj.RadioContext)
@@ -86,8 +87,6 @@ func dispatchTcpPackets() {
 func dispatchUdpPackets() {
 	for {
 		message := <-pcapChanUdp
-
-		// parse preamble
 		err, preamble, payload := vita.ParseVitaPreamble(message)
 
 		if err != nil || preamble.Class_id == nil {
@@ -138,6 +137,15 @@ func dispatchUdpPackets() {
 }
 
 func handleOpusPackage(preamble *vita.VitaPacketPreamble, pkg []byte) {
+
+	if len(pkg) > 100 {
+		fmt.Print(" ")
+		fmt.Print(len(pkg))
+		fmt.Print(" ")
+	} else {
+		fmt.Print(".")
+	}
+
 	res := append(MSG_OPUS, pkg...)
 	hub.broadcast <- res
 }
