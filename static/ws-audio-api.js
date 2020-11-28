@@ -3,14 +3,12 @@ let audioContext = new AudioContext({
     sampleRate: 24000
 });
 
-
 (function (global) {
     var defaultConfig = {
         codec: {
             sampleRate: 24000,
             channels: 2,
-            app: 2049,
-            bufferSize: 1024 * 8
+            bufferSize: 512
         },
         server: 'wss://' + window.location.hostname + ':5000'
     };
@@ -108,8 +106,6 @@ let audioContext = new AudioContext({
 
     WSAudioAPI.Player.prototype.stop = function () {
         this.audioQueue = null;
-        //this.scriptNode.disconnect();
-        //this.scriptNode = null;
         this.gainNode.disconnect();
         this.gainNode = null;
 

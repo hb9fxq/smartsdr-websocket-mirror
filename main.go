@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -18,8 +19,6 @@ import (
 
 var rc *obj.RadioContext
 
-var addr, radioIp, pcapInterface string
-
 var pcapChanUdp = make(chan []byte)
 var pcapChanTcp = make(chan string)
 var hub *Hub
@@ -31,15 +30,23 @@ var (
 	MSG_OPUS  = []byte{'O', ' '}
 )
 
+type AppContext struct {
+	httpListenAddress string
+	radioIp           string
+	pcapInterface     string
+}
+
+var appContext = new(AppContext)
+
 func main() {
 
-	radioIp = "192.168.92.8"
-	addr = "0.0.0.0:8283"
-	//pcapInterface = "bridge1"
-	pcapInterface = "en0"
+	flag.StringVar(&appContext.httpListenAddress, "HTTPLISTEN", "0.0.0.0:8283", "")
+	flag.StringVar(&appContext.radioIp, "RADIOIP", "192.168.92.8", "Flex Radio IP Address")
+	flag.StringVar(&appContext.pcapInterface, "IF", "en0", "local interface to sniff VITA-49 traffic")
+	flag.Parse()
 
 	rc = new(obj.RadioContext)
-	rc.RadioAddr = radioIp
+	rc.RadioAddr = appContext.radioIp
 	rc.Debug = true
 	rc.ChannelRadioResponse = make(chan string)
 	rc.MyUdpEndpointPort = "7598"
@@ -64,7 +71,7 @@ func main() {
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})
-	err := http.ListenAndServe(addr, nil)
+	err := http.ListenAndServe(appContext.httpListenAddress, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
@@ -137,15 +144,6 @@ func dispatchUdpPackets() {
 }
 
 func handleOpusPackage(preamble *vita.VitaPacketPreamble, pkg []byte) {
-
-	if len(pkg) > 100 {
-		fmt.Print(" ")
-		fmt.Print(len(pkg))
-		fmt.Print(" ")
-	} else {
-		fmt.Print(".")
-	}
-
 	res := append(MSG_OPUS, pkg...)
 	hub.broadcast <- res
 }
@@ -194,7 +192,7 @@ func handleFFTPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrFFTP
 }
 
 func pullPcap() {
-	if handle, err := pcap.OpenLive(pcapInterface, 1600, true, pcap.BlockForever); err != nil {
+	if handle, err := pcap.OpenLive(appContext.pcapInterface, 1600, true, pcap.BlockForever); err != nil {
 		panic(err)
 	} else if err := handle.SetBPFFilter("port 4993 or port 4992"); err != nil {
 		panic(err)
@@ -243,44 +241,5 @@ func pushRadioStates() {
 		hub.broadcast <- append(MSG_PAN, j...)
 		fmt.Println("Broadcast " + string(j))
 		time.Sleep(1 * time.Second)
-	}
-}
-
-type Hub struct {
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-}
-
-func newHub() *Hub {
-	return &Hub{
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
-	}
-}
-
-func (h *Hub) run() {
-	for {
-		select {
-		case client := <-h.register:
-			h.clients[client] = true
-		case client := <-h.unregister:
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.send)
-			}
-		case message := <-h.broadcast:
-			for client := range h.clients {
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					delete(h.clients, client)
-				}
-			}
-		}
 	}
 }
