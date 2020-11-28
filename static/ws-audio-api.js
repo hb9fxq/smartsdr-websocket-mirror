@@ -3,6 +3,8 @@ let audioContext = new AudioContext({
     sampleRate: 24000
 });
 
+
+
 (function (global) {
     var defaultConfig = {
         codec: {

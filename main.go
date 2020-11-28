@@ -27,6 +27,7 @@ var (
 	MSG_PAN   = []byte{'P', ' '}
 	MSG_SLICE = []byte{'S', ' '}
 	MSG_FFT   = []byte{'F', ' '}
+	MSG_WF    = []byte{'W', ' '}
 	MSG_OPUS  = []byte{'O', ' '}
 )
 
@@ -91,6 +92,8 @@ func dispatchTcpPackets() {
 	}
 }
 
+var currentPanFound bool
+
 func dispatchUdpPackets() {
 	for {
 		message := <-pcapChanUdp
@@ -123,6 +126,13 @@ func dispatchUdpPackets() {
 			case vita.SL_VITA_DISCOVERY_CLASS:
 				break
 			case vita.SL_VITA_WATERFALL_CLASS:
+
+				if !currentPanFound {
+					continue
+				}
+
+				pkg := vita.ParseVitaWaterfall(payload, preamble)
+				handleWFPackage(preamble, pkg)
 				break
 			default:
 				fmt.Println("UNKNOWN VITA TYPE")
@@ -146,6 +156,80 @@ func dispatchUdpPackets() {
 func handleOpusPackage(preamble *vita.VitaPacketPreamble, pkg []byte) {
 	res := append(MSG_OPUS, pkg...)
 	hub.broadcast <- res
+}
+
+var wfHandles = make(map[string]*WfHandle)
+
+type WfHandle struct {
+	Missing  uint16
+	TimeCode uint32
+	Buffer   []uint16
+}
+
+func handleWFPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrWaterfallTile) {
+	streamHexString := fmt.Sprintf("%X", preamble.Stream_id)
+	streamHexStringMsg := append(MSG_WF, []byte(streamHexString)...)
+
+	if wfHandles[streamHexString] == nil {
+		wfHandles[streamHexString] = &WfHandle{}
+		wfHandles[streamHexString].Missing = pkg.TotalBinsInFrame
+	}
+
+	handle := wfHandles[streamHexString]
+
+	if handle.TimeCode != pkg.Timecode {
+		handle.Missing = pkg.TotalBinsInFrame
+	}
+
+	handle.Buffer = append(handle.Buffer, pkg.Data...)
+
+	handle.TimeCode = pkg.Timecode
+	handle.Missing -= pkg.Width
+
+	if handle.Missing == 0 {
+		res := append(streamHexStringMsg, cropBufferToPan(preamble, pkg, handle.Buffer)...)
+		hub.broadcast <- res
+		handle.Buffer = []uint16{}
+		handle.Missing = 9999
+	}
+}
+
+func cropBufferToPan(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrWaterfallTile, buffer []uint16) []byte {
+
+	var lastXPixelSize = currentPan.XPixels
+	var res []byte
+	res = make([]byte, lastXPixelSize*2, lastXPixelSize*2)
+
+	panLeftBound := float64(currentPan.Center) - (currentPan.Bandwidth*1e6)/2
+	panPixWidth := float64(currentPan.Bandwidth * 1e6 / float64(currentPan.XPixels))
+
+	previousBin := uint16(0)
+
+	for idx := int32(0); idx < lastXPixelSize; idx++ {
+		pixelFreq := uint64(panLeftBound + (panPixWidth * float64(idx+1)))
+
+		for si := previousBin; si < pkg.TotalBinsInFrame; si++ {
+			binPos := pkg.FrameLowFreq + (pkg.BinBandwidth * uint64(si))
+
+			if binPos >= pixelFreq {
+				continue
+			}
+
+			b := make([]byte, 2)
+			binary.LittleEndian.PutUint16(b, buffer[si])
+
+			if idx*2+1 > lastXPixelSize*2 { //Panadapter resized race...
+				return res
+			}
+
+			res[idx*2] = b[0]
+			res[idx*2+1] = b[1]
+			previousBin = si
+
+		}
+	}
+
+	return res
 }
 
 type FftHandle struct {
@@ -223,11 +307,15 @@ func serveHome() {
 
 }
 
+var currentPan = obj.Panadapter{}
+
 func pushRadioStates() {
 	for {
 		jsonPanadapters := make(map[string]interface{})
 		rc.Panadapters.Range(func(k interface{}, value interface{}) bool {
 			jsonPanadapters[k.(string)] = value
+			currentPan = value.(obj.Panadapter)
+			currentPanFound = true
 			return true
 		})
 
