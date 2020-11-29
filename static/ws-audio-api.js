@@ -3,14 +3,14 @@ let audioContext = new AudioContext({
     sampleRate: 24000
 });
 
-let myArrayBuffer = audioContext.createBuffer(2, 48e3, 24e3);
+let myArrayBuffer = audioContext.createBuffer(2, 24e3, 24e3);
 
 (function (global) {
     var defaultConfig = {
         codec: {
             sampleRate: 24e3,
             channels: 2,
-            bufferSize: 1024*8
+            bufferSize: 1024/2
         },
         server: 'wss://' + window.location.hostname + ':5000'
     };
@@ -34,10 +34,9 @@ let myArrayBuffer = audioContext.createBuffer(2, 48e3, 24e3);
         _this.audioQueueR.write(floats[1])
 
 
-        var frameCount = audioContext.sampleRate * 2.0;
+        var frameCount = myArrayBuffer.length;
 
         if(_this.audioQueue.length() > frameCount) {
-
 
             myArrayBuffer.copyToChannel(_this.audioQueue.read(frameCount), 0, 0)
             myArrayBuffer.copyToChannel(_this.audioQueueR.read(frameCount), 1, 0)
