@@ -10,7 +10,7 @@ let audioContext = new AudioContext({
         codec: {
             sampleRate: 24000,
             channels: 2,
-            bufferSize: 512
+            bufferSize: 1024*8
         },
         server: 'wss://' + window.location.hostname + ':5000'
     };

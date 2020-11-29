@@ -199,10 +199,6 @@ func handleWFPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrWater
 		handle.Missing = pkg.TotalBinsInFrame
 	}
 
-	for idx := 0; idx > len(pkg.Data); idx++ {
-		pkg.Data[idx] = pkg.Data[idx] - uint16(pkg.AutoBlackLevel/4)
-	}
-
 	handle.Buffer = append(handle.Buffer, pkg.Data...)
 
 	handle.TimeCode = pkg.Timecode

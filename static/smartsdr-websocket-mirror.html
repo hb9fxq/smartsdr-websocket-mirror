@@ -69,11 +69,11 @@ Panadapter 0x40000000
     const decoder = new TextDecoder();
 
 
-    var canvas = document.getElementById('canvas0x40000000');
+    var canvasfft = document.getElementById('canvas0x40000000');
     var canvasb = document.getElementById('canvas0x40000000Back');
     var canvaswf = document.getElementById('canvasWF');
 
-    var ctx = canvas.getContext('2d');
+    var ctxfft = canvasfft.getContext('2d');
     var ctxb = canvasb.getContext('2d');
     var ctxwf = canvaswf.getContext('2d');
 
@@ -139,12 +139,9 @@ Panadapter 0x40000000
             return;
         }
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        var y = 0;
-
-
-        //console.info(hzPerPixel)
+        const canvas = new OffscreenCanvas(canvasfft.width, canvasfft.height);
+        const ctx = canvas.getContext('2d');
 
         ctx.strokeStyle = '#0800ff';
         ctx.beginPath();
@@ -155,9 +152,12 @@ Panadapter 0x40000000
         for (n = 0; n < values.length - 1; n++) {
             ctx.lineTo((n), values[n]);
         }
-        ctx.moveTo(values.length, values[values.length - 2]);
 
+        ctx.moveTo(values.length, values[values.length - 2]);
         ctx.stroke();
+
+        ctxfft.clearRect(0,0,canvasfft.width, canvasfft.height)
+        ctxfft.drawImage(canvas,0,0)
     }
 
     function handlePanadapterMessage(buffer) {
@@ -168,15 +168,15 @@ Panadapter 0x40000000
         console.info(jsonText)
 
 
-        if (parseInt(canvas.width) != parseInt(jsonPanadapter.XPixels)) {
-            canvas.width = jsonPanadapter.XPixels
+        if (parseInt(canvasfft.width) != parseInt(jsonPanadapter.XPixels)) {
+            canvasfft.width = jsonPanadapter.XPixels
             canvasb.width = jsonPanadapter.XPixels
             canvaswf.width = jsonPanadapter.XPixels
             console.info("canvas resize x=" + jsonPanadapter.XPixels)
         }
 
-        if (parseInt(canvas.height) != parseInt(jsonPanadapter.YPixels)) {
-            canvas.height = jsonPanadapter.YPixels
+        if (parseInt(canvasfft.height) != parseInt(jsonPanadapter.YPixels)) {
+            canvasfft.height = jsonPanadapter.YPixels
             canvasb.height = jsonPanadapter.YPixels
             console.info("canvas resize y=" + jsonPanadapter.YPixels)
         }
@@ -184,15 +184,15 @@ Panadapter 0x40000000
         ctxb.clearRect(0, 0, canvasb.width, canvasb.height);
         ctxb.beginPath();
         ctxb.fillStyle = "rgb(43,71,188, 0.2)";
-        ctxb.rect(0, canvas.height - 20, canvas.width, canvas.height);
+        ctxb.rect(0, canvasfft.height - 20, canvasfft.width, canvasfft.height);
         ctxb.fill();
 
         var strokeCount = 0;
-        for (y = 0; y < jsonPanadapter.XPixels; y += canvas.width / 20) {
+        for (y = 0; y < jsonPanadapter.XPixels; y += canvasfft.width / 20) {
             ctxb.beginPath();
             ctxb.strokeStyle = '#999292';
             ctxb.moveTo(y, 0);
-            ctxb.lineTo(y, canvas.height - 20);
+            ctxb.lineTo(y, canvasfft.height - 20);
             ctxb.stroke();
             ctxb.closePath();
 
@@ -203,7 +203,7 @@ Panadapter 0x40000000
                 var freq = frequencyAtPixel(y)
                 freq = freq.toFixed(4)
 
-                ctxb.fillText(freq, y, canvas.height - 10);
+                ctxb.fillText(freq, y, canvasfft.height - 10);
             }
 
             strokeCount += 1;
