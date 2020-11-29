@@ -19,8 +19,10 @@ Panadapter 0x40000000
 </div>
 
 <div style="position: absolute;top: 500px">
-
-    <canvas id="canvasWF" width="1900" height="350"
+    <div class="slidecontainer">
+        WF Gain Reduction<input type="range" min="0" max="32000" value="50" class="slider" id="wfgain">
+    </div>
+    <canvas id="canvasWF" width="1900" height="200"
             style=""></canvas>
 </div>
 
@@ -36,6 +38,16 @@ Panadapter 0x40000000
 <script src="colormap.js"></script>
 
 <script type="application/javascript">
+
+    var wfgainval = 50;
+
+    var slide = document.getElementById('wfgain');
+
+
+    slide.onchange = function() {
+
+        wfgainval = this.value;
+    }
 
     let colors = colormap({
         colormap: 'jet',
@@ -100,7 +112,7 @@ Panadapter 0x40000000
 
         ctx.beginPath();
         for (idx = 0; idx < bins.length; idx++) {
-            ctx.fillStyle=colors[bins[idx]];
+            ctx.fillStyle=colors[bins[idx]-wfgainval];
             ctx.fillRect(idx,0,1,1);
         }
 
