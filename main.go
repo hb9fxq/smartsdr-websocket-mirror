@@ -11,6 +11,7 @@ import (
 	"github.com/hb9fxq/flexlib-go/obj"
 	"github.com/hb9fxq/flexlib-go/sdrobjects"
 	"github.com/hb9fxq/flexlib-go/vita"
+	"github.com/sgreben/piecewiselinear"
 	"log"
 	"net/http"
 	"strings"
@@ -214,41 +215,33 @@ func handleWFPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrWater
 
 func cropBufferToPan(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrWaterfallTile, buffer []uint16) []byte {
 
-	var lastXPixelSize = currentPan.XPixels
+	var lastXPixelSize = uint16(currentPan.XPixels)
 	var res []byte
-	res = make([]byte, lastXPixelSize*2, lastXPixelSize*2)
 
-	panLeftBound := float64(currentPan.Center) - (currentPan.Bandwidth*1e6)/2
-	panPixWidth := float64(currentPan.Bandwidth * 1e6 / float64(currentPan.XPixels))
+	panLeftBound := uint32(float64(currentPan.Center) - (currentPan.Bandwidth*1e6)/2)
+	panPixWidth := uint32(float64(currentPan.Bandwidth * 1e6 / float64(currentPan.XPixels)))
 
-	previousBin := uint16(0)
+	binFreqMap := make([]float64, len(buffer))
 
-	for idx := int32(0); idx < lastXPixelSize; idx++ {
-		pixelFreq := uint64(panLeftBound + (panPixWidth * float64(idx+1)))
+	floats := []float64{}
+	for _, v := range buffer {
+		floats = append(floats, float64(v))
+	}
 
-		for si := previousBin; si < pkg.TotalBinsInFrame; si++ {
-			binPos := pkg.FrameLowFreq + (pkg.BinBandwidth * uint64(si))
+	for si := uint16(0); si < pkg.TotalBinsInFrame; si++ {
+		binFreqMap[si] = float64(pkg.FrameLowFreq) + (float64(pkg.BinBandwidth) * float64(si))
+	}
 
-			if binPos >= pixelFreq {
-				continue
-			}
+	f := piecewiselinear.Function{Y: floats}
+	f.X = binFreqMap
 
-			if si > uint16(len(buffer)-1) {
-				return res
-			}
+	for idx := uint32(0); idx < uint32(lastXPixelSize); idx++ {
+		pixelFreq := float64(panLeftBound + (panPixWidth * (idx)) + panPixWidth)
 
-			b := make([]byte, 2)
-			binary.LittleEndian.PutUint16(b, buffer[si])
+		b := make([]byte, 2)
+		binary.LittleEndian.PutUint16(b, uint16(f.At(pixelFreq-(float64(panPixWidth)))))
+		res = append(res, b...)
 
-			if idx*2+1 > lastXPixelSize*2 { //Panadapter resized race...
-				return res
-			}
-
-			res[idx*2] = b[0]
-			res[idx*2+1] = b[1]
-			previousBin = si
-
-		}
 	}
 
 	return res
@@ -274,7 +267,7 @@ func handleFFTPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrFFTP
 
 	handle := fftHandles[streamHexString]
 
-	if handle.FrameIndex != pkg.FrameIndex {
+	if pkg.StartBin_index == 0 {
 		handle.Missing = pkg.TotalBinsInFrame
 	}
 

@@ -3,12 +3,12 @@ let audioContext = new AudioContext({
     sampleRate: 24000
 });
 
-
+let myArrayBuffer = audioContext.createBuffer(2, 48e3, 24e3);
 
 (function (global) {
     var defaultConfig = {
         codec: {
-            sampleRate: 24000,
+            sampleRate: 24e3,
             channels: 2,
             bufferSize: 1024*8
         },
@@ -22,15 +22,31 @@ let audioContext = new AudioContext({
             this.config.server = this.config.server || defaultConfig.server;
             this.parentSocket = socket;
             this.decoder = new libopus.Decoder(this.config.codec.channels, this.config.codec.sampleRate);
-            this.silence = new Float32Array(this.config.codec.bufferSize);
         }
     };
+
 
     WSAudioAPI.Player.prototype.AddChunk = function (chunk) {
         var _this = this;
         var floats = _this.decoder.decode(chunk)
+
         _this.audioQueue.write(floats[0])
         _this.audioQueueR.write(floats[1])
+
+
+        var frameCount = audioContext.sampleRate * 2.0;
+
+        if(_this.audioQueue.length() > frameCount) {
+
+
+            myArrayBuffer.copyToChannel(_this.audioQueue.read(frameCount), 0, 0)
+            myArrayBuffer.copyToChannel(_this.audioQueueR.read(frameCount), 1, 0)
+
+            var source = audioContext.createBufferSource();
+            source.buffer = myArrayBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+        }
     }
 
     WSAudioAPI.Player.prototype.start = function () {
@@ -79,22 +95,6 @@ let audioContext = new AudioContext({
                 return this.buffer.length;
             }
         };
-
-        this.scriptNode = audioContext.createScriptProcessor(this.config.codec.bufferSize, 2, 2);
-
-        this.scriptNode.onaudioprocess = function (e) {
-            if (_this.audioQueue.length() > _this.config.codec.bufferSize) {
-
-                e.outputBuffer.copyToChannel(_this.audioQueue.read(_this.config.codec.bufferSize), 0)
-                e.outputBuffer.copyToChannel(_this.audioQueueR.read(_this.config.codec.bufferSize), 1)
-
-            } else {
-                e.outputBuffer.getChannelData(0).set(_this.silence);
-                e.outputBuffer.getChannelData(1).set(_this.silence);
-            }
-        };
-
-        this.scriptNode.connect(audioContext.destination);
     };
 
 
