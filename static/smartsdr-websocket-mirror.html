@@ -10,9 +10,9 @@
 Panadapter 0x40000000
 
 <div style="position: relative;">
-    <canvas id="canvas0x40000000Back" width="5000" height="500"
+    <canvas id="canvas0x40000000Back" width="1900" height="500"
             style="position: absolute; left: 0; top: 0; z-index: 0;"></canvas>
-    <canvas id="canvas0x40000000" width="5000" height="500"
+    <canvas id="canvas0x40000000" width="1900" height="500"
             style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
 
 
@@ -20,7 +20,7 @@ Panadapter 0x40000000
 
 <div style="position: absolute;top: 500px">
 
-    <canvas id="canvasWF" width="5000" height="500"
+    <canvas id="canvasWF" width="1900" height="350"
             style=""></canvas>
 </div>
 
@@ -68,12 +68,6 @@ Panadapter 0x40000000
     var jsonPanadapter = {}
     var conn;
 
-    function shift_canvas(ctx, w, h, dx, dy) {
-        var imageData = ctx.getImageData(0, 0, w, h);
-        ctx.clearRect(0, 0, w, h);
-        ctx.putImageData(imageData, dx, dy);
-    }
-
     function frequencyAtPixel(pixel) {
 
         var bwMhz = jsonPanadapter.Bandwidth
@@ -93,25 +87,24 @@ Panadapter 0x40000000
         return centerMhz + (offset * mhzPerPx)
     }
 
+
     function handleWfPackage(buffer) {
 
+        var bins = new Uint16Array(buffer.slice(10))
 
-        var bins = new Uint16Array(buffer.slice(10)) /* carries stream id */
+        const canvas = new OffscreenCanvas(canvaswf.width, canvaswf.height);
+        const ctx = canvas.getContext('2d');
 
-        var idx = 0;
 
-        shift_canvas(ctxwf, 5000, 500, 0, 1)
+        canvas.getContext('2d').drawImage(canvaswf, 0, 1)
 
-        ctxwf.beginPath();
+        ctx.beginPath();
         for (idx = 0; idx < bins.length; idx++) {
-
-            //ctxwf.fillStyle = colors[bins[idx]-6000];
-
-            ctxwf.fillStyle=colors[bins[idx]-8000];
-            ctxwf.fillRect(idx,0,1,1);
+            ctx.fillStyle=colors[bins[idx]-8000];
+            ctx.fillRect(idx,0,1,1);
         }
 
-
+        ctxwf.drawImage(canvas, 0,0)
 
         //console.info(buffer.length)
     }
@@ -166,6 +159,7 @@ Panadapter 0x40000000
         if (parseInt(canvas.width) != parseInt(jsonPanadapter.XPixels)) {
             canvas.width = jsonPanadapter.XPixels
             canvasb.width = jsonPanadapter.XPixels
+            canvaswf.width = jsonPanadapter.XPixels
             console.info("canvas resize x=" + jsonPanadapter.XPixels)
         }
 

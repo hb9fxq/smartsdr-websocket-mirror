@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -60,13 +61,23 @@ func main() {
 		}
 	}(rc)
 
+	hub = newHub()
+	go hub.run()
+
 	go pushRadioStates()
-	go dispatchUdpPackets()
+
 	go dispatchTcpPackets()
 	go pullPcap()
 
-	hub = newHub()
-	go hub.run()
+	for {
+		if currentPanFound {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	go dispatchUdpPackets()
 
 	serveHome()
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -166,12 +177,16 @@ type WfHandle struct {
 	Buffer   []uint16
 }
 
+var mutex = &sync.Mutex{}
+
 func handleWFPackage(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrWaterfallTile) {
 	streamHexString := fmt.Sprintf("%X", preamble.Stream_id)
 	streamHexStringMsg := append(MSG_WF, []byte(streamHexString)...)
 
 	if wfHandles[streamHexString] == nil {
+		mutex.Lock()
 		wfHandles[streamHexString] = &WfHandle{}
+		mutex.Unlock()
 		wfHandles[streamHexString].Missing = pkg.TotalBinsInFrame
 	}
 
@@ -213,6 +228,10 @@ func cropBufferToPan(preamble *vita.VitaPacketPreamble, pkg *sdrobjects.SdrWater
 
 			if binPos >= pixelFreq {
 				continue
+			}
+
+			if si > uint16(len(buffer)-1) {
+				return res
 			}
 
 			b := make([]byte, 2)
