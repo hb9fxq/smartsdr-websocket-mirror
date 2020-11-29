@@ -125,8 +125,11 @@ func dispatchUdpPackets() {
 				handleFFTPackage(preamble, pkg)
 				break
 			case vita.SL_VITA_OPUS_CLASS:
-				pkg := vita.ParseVitaOpus(payload, preamble)
-				handleOpusPackage(preamble, pkg)
+				go func() {
+					pkg := vita.ParseVitaOpus(payload, preamble)
+					go handleOpusPackage(preamble, pkg)
+				}()
+
 				break
 			case vita.SL_VITA_IF_NARROW_CLASS:
 				fmt.Println("SL_VITA_IF_NARROW_CLASS")
